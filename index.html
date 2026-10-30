@@ -377,6 +377,7 @@ body.touch #hearts{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
       <div class="helpcard"><div class="k"><kbd>Q</kbd></div><div><b>Build big</b><small>Q builds or digs 3 × 3 or 5 tall at a time. Great for skyscrapers!</small></div></div>
       <div class="helpcard"><div class="k"><kbd>K</kbd></div><div><b>Cook</b><small>Pick crops, raid the fridge, then cook at an oven, pot or campfire. Food gives you hearts and super powers.</small></div></div>
       <div class="helpcard"><div class="k"><kbd>L</kbd></div><div><b>My look</b><small>Change your hair, clothes, hats and glasses.</small></div></div>
+      <div class="helpcard"><div class="k"><kbd>✦</kbd></div><div><b>Build a golem</b><small>Iron golem: 4 iron blocks in a T, then a carved pumpkin on top. Snow golem: 2 snow blocks, then a carved pumpkin. Click a golem to make it stay or follow.</small></div></div>
       <div class="helpcard"><div class="k"><kbd>G</kbd></div><div><b>Car workshop</b><small>Design your own car: type, colours, wheels, spoiler and a name.</small></div></div>
       <div class="helpcard"><div class="k"><kbd>⌘</kbd><kbd>S</kbd></div><div><b>Save your game</b><small>Keep copies in save slots. The game also saves itself.</small></div></div>
       <div class="helpcard"><div class="k"><kbd>✦</kbd></div><div><b>Crystal hunt</b><small>12 glowing crystals are hidden on the island. Look for light beams in the sky!</small></div></div>
@@ -759,6 +760,15 @@ for(const b of BLOCKS){if(!b)continue;
   if(b.name==='Cake'){b.use='eat';b.food='cake';b.free=true;}
 }
 
+/* golem parts */
+T.CARVED=120;T.IRON=121;
+const B_IRON=cub('Iron block',T.IRON,T.IRON,T.IRON);
+const B_CPUMPKIN=shp('Carved pumpkin',[[0,0,0,16,16,16,T.PUMPKIN,T.CARVED,T.PUMPKIN_TOP]]);
+const B_PUMPKIN=BLOCKS.findIndex(b=>b&&b.name==='Pumpkin'),B_SNOWBLOCK=BLOCKS.findIndex(b=>b&&b.name==='Snow'),B_METAL=BLOCKS.findIndex(b=>b&&b.name==='Metal');
+item('play','Iron block',B_IRON,{hint:'Iron golem: 4 iron blocks in a T, then a carved pumpkin on top'});
+item('play','Carved pumpkin',B_CPUMPKIN,{hint:'Put it on 2 snow blocks or an iron T and a golem comes to life'});
+{const sn=ITEMS.find(t=>t.name==='Snow');if(sn)sn.hint='Snow golem: stack 2 snow blocks, then a carved pumpkin on top';}
+
 /* block properties used by movement and collision */
 const PASS=new Uint8Array(256);PASS[8]=1;
 for(let b=1;b<BLOCKS.length;b++)if(BLOCKS[b].pass)PASS[b]=1;
@@ -1140,6 +1150,8 @@ function makeAtlas(){
   tile(116,(x,y)=>[jit((x+y)%5===0?[70,40,24]:[96,58,34],6)]);
   tile(117,(x,y)=>{if(((x+y)%4===0)&&((x-y+16)%8<4))return[[200,206,212]];return[jit([140,146,152],5)];});
   tile(118,(x,y)=>{const a=Math.atan2(y-7.5,x-7.5),k=((a+Math.PI)/(Math.PI/3))|0;return[[[240,60,60],[250,250,250],[60,120,230],[250,250,250],[250,210,60],[250,250,250]][k%6]];});
+  tile(120,(x,y)=>{const eye=y>=4&&y<=6&&(x>=3&&x<=5||x>=10&&x<=12)&&!(y===4&&(x===3||x===5||x===10||x===12));const mouth=y>=10&&y<=12&&x>=3&&x<=12&&!(y===10&&x%3===0);if(eye||mouth)return[[70,34,10]];return[jit(x%4===0?[200,100,20]:[236,138,32],8)];});
+  tile(121,(x,y)=>{if(x===0||y===0||x===15||y===15)return[[150,154,160]];if((x===3||x===12)&&(y===3||y===12))return[[118,122,128]];return[jit([214,218,222],4)];});
   tile(119,(x,y)=>{if(Math.hypot(x-4,y-4)<1.2||Math.hypot(x-11,y-6)<1.4||Math.hypot(x-7,y-12)<1.1||Math.hypot(x-13,y-13)<1)return[[240,250,255]];return[jit([90,180,230],8)];});
 
   return c;
@@ -1330,7 +1342,7 @@ function rebuildSet(set){for(const k of set){const [a,b]=k.split(',').map(Number
 
 /* ---------- saving ---------- */
 let saveTimer=0;
-function snapshot(){return{seed,edits:encodeEdits(edits),cars:cars.map(c=>[+c.pos.x.toFixed(2),+c.pos.y.toFixed(2),+c.pos.z.toFixed(2),+c.yaw.toFixed(2),c.spec]),pa:pantry,fo:foods,bl:bestLap,p:[player.pos.x,player.pos.y,player.pos.z,player.yaw,player.pitch],t:worldTime,m:monstersOn,me,hb:HOTBAR,st:settings,cr:[...collected]};}
+function snapshot(){return{seed,edits:encodeEdits(edits),cars:cars.map(c=>[+c.pos.x.toFixed(2),+c.pos.y.toFixed(2),+c.pos.z.toFixed(2),+c.yaw.toFixed(2),c.spec]),pa:pantry,fo:foods,gp:pets.map(e=>[e.pet,+e.pos.x.toFixed(2),+e.pos.y.toFixed(2),+e.pos.z.toFixed(2),e.name,e.follow?1:0]),bl:bestLap,p:[player.pos.x,player.pos.y,player.pos.z,player.yaw,player.pitch],t:worldTime,m:monstersOn,me,hb:HOTBAR,st:settings,cr:[...collected]};}
 function save(){
   clearTimeout(saveTimer);
   saveTimer=setTimeout(()=>{try{localStorage.setItem(SAVE_KEY,JSON.stringify(snapshot()));}catch(e){}},500);
@@ -1442,6 +1454,7 @@ function breakBlock(){
   const h=target();
   const d=aimDir();
   const g=d?pickGloomie(h?h.t:REACH,camera.position,d):null;
+  {const pet=d?pickPet(h?h.t:REACH+camSmooth,camera.position,d):null;if(pet){say(pet,pick(['Hey, that tickles!','I am your friend!','Clunk!']));return;}}
   if(g){hitGloomie(g,1,camera.position);return;}
   if(driving)return;
   const car=d?pickCar(h?h.t:REACH+camSmooth,camera.position,d):null;
@@ -2307,6 +2320,104 @@ function updateGolem(e,dt){
   if(dist<.7||e.stuckT>2.5){const [x,z]=villageSpot();e.tx=x;e.tz=z;e.wait=3+Math.random()*5;e.stuckT=0;}
 }
 
+/* ---------- golems you build: they come to life when the pumpkin goes on top ---------- */
+const pets=[],balls=[];
+const IRON_NAMES=['Clank','Rusty','Ironside','Tank','Anvil','Rivet'],SNOW_NAMES=['Frosty','Flurry','Snowball','Chilly','Puff','Blizzard'];
+const ballMat=new THREE.MeshBasicMaterial({color:0xffffff}),tv2=new THREE.Vector3();
+function makeSnowGolem(){
+  const g=new THREE.Group();
+  const snow=mat(0xf4f8fb),pk=mat(0xe2862a),dark=mat(0x3a2410),stick=mat(0x6b4a2e),stem=mat(0x5a8a30);
+  part(g,snow,.8,.75,.8,0,.38,0);part(g,snow,.62,.55,.62,0,1.03,0);
+  const head=new THREE.Group();head.position.set(0,1.56,0);g.add(head);
+  part(head,pk,.52,.5,.52,0,0,0);part(head,stem,.08,.1,.08,0,.3,0);
+  part(head,dark,.1,.1,.02,-.12,.06,-.265);part(head,dark,.1,.1,.02,.12,.06,-.265);part(head,dark,.28,.06,.02,0,-.12,-.265);
+  const arms=[limb(g,stick,.06,.6,.06,-.34,1.18,0),limb(g,stick,.06,.6,.06,.34,1.18,0)];
+  arms[0].rotation.z=-.8;arms[1].rotation.z=.8;
+  return {group:g,head,arms,legs:[new THREE.Group(),new THREE.Group()],h:1.85,r:.4,tagY:2.15};
+}
+function spawnPet(kind,x,y,z,name,follow){
+  const iron=kind==='iron',n=pets.length;
+  const e=makeEntity(build(iron?makeGolem:makeSnowGolem),name||pick(iron?IRON_NAMES:SNOW_NAMES),iron?'#cfd6dc':'#bfe8ff',
+    {kind:iron?'golem':'snowgolem',pet:kind,follow:follow!==false,atkT:0,talkCD:4,offX:((n%3)-1)*2.4,offZ:3.8+Math.floor(n/3)*2.4});
+  e.pos.set(x,y,z);e.face=player.yaw+Math.PI;e.group.position.copy(e.pos);pets.push(e);return e;
+}
+function clearPets(){while(pets.length)disposeEntity(pets.pop());for(const b of balls)scene.remove(b.m);balls.length=0;}
+function throwBall(e,foe){
+  const m=new THREE.Mesh(unitBox,ballMat);m.scale.setScalar(.24);m.position.set(e.pos.x,e.pos.y+1.3,e.pos.z);scene.add(m);
+  balls.push({m,foe,t:0,from:m.position.clone()});tone('sine',700,300,.12,.05);
+}
+function updateBalls(dt){
+  for(let i=balls.length-1;i>=0;i--){
+    const b=balls[i],f=b.foe;b.t+=dt*2.6;
+    if(!gloomies.includes(f)||b.t>=1){
+      if(gloomies.includes(f)){hitGloomie(f,1,b.from);burst(f.pos.x,f.pos.y+.4,f.pos.z,0xffffff,8);}
+      scene.remove(b.m);balls.splice(i,1);continue;
+    }
+    b.m.position.lerpVectors(b.from,tv2.set(f.pos.x,f.pos.y+.45,f.pos.z),b.t);b.m.position.y+=Math.sin(b.t*Math.PI)*1.3;
+  }
+}
+function updatePet(e,dt){
+  e.atkT-=dt;e.talkCD-=dt;
+  const p=player.pos,iron=e.pet==='iron';
+  const foe=nearestGloomie(e.pos,iron?13:11);
+  if(foe&&(e.follow||foe.pos.distanceTo(e.pos)<8)){
+    if(iron){
+      const d=stepEntity(e,dt,foe.pos.x,foe.pos.z,4.4,1.2);
+      if(d<2.4&&e.atkT<=0){e.swing=.35;e.atkT=1;hitGloomie(foe,3,e.pos);sfx('dig');if(e.talkCD<=0){say(e,pick(['Smash!',`Stay away from ${me}!`,'Golem power!']));e.talkCD=12;}}
+    }else{
+      const d=Math.hypot(foe.pos.x-e.pos.x,foe.pos.z-e.pos.z);
+      if(d>8)stepEntity(e,dt,foe.pos.x,foe.pos.z,4.2,7);else{stepEntity(e,dt,e.pos.x,e.pos.z,0,1);faceToward(e,foe.pos.x,foe.pos.z,dt);}
+      if(d<=9&&e.atkT<=0){e.atkT=.9;e.swing=.35;throwBall(e,foe);if(e.talkCD<=0){say(e,pick(['Snowball!','Brrr, take that!','Chill out, Gloomie!']));e.talkCD=12;}}
+    }
+    return;
+  }
+  if(!e.follow){stepEntity(e,dt,e.pos.x,e.pos.z,0,1);if(Math.hypot(p.x-e.pos.x,p.z-e.pos.z)<6)faceToward(e,p.x,p.z,dt);return;}
+  tv.set(e.offX,0,e.offZ).applyAxisAngle(Y_AXIS,player.yaw);
+  const tx=p.x+tv.x,tz=p.z+tv.z;
+  if(Math.hypot(p.x-e.pos.x,p.z-e.pos.z)>30||Math.abs(p.y-e.pos.y)>12){
+    e.pos.set(tx,p.y+.2,tz);if(collides(e.pos.x,e.pos.y,e.pos.z,e.r,e.h))e.pos.copy(p);e.vel.set(0,0,0);
+  }
+  const dist=stepEntity(e,dt,tx,tz,iron?4.8:5.4,1.4);
+  if(e.speed<=.4)faceToward(e,p.x,p.z,dt);
+  if(e.stuckT>1.6&&dist>3){e.stuckT=0;burst(e.pos.x,e.pos.y+1,e.pos.z,0xcfd6dc,8);e.pos.copy(p);e.vel.set(0,0,0);}
+  if(e.talkCD<=0&&Math.random()<dt/40){say(e,pick(iron?[`I will keep you safe, ${me}.`,'Clunk clunk.','I like this island.']:['Is it snowing yet?',`Snowball fight, ${me}?`,'I feel so cool!']));e.talkCD=30;}
+}
+function pickPet(maxT,o,dir){
+  let best=null,bt=maxT;
+  for(const e of pets){
+    const cx=e.pos.x-o.x,cy=e.pos.y+1.1-o.y,cz=e.pos.z-o.z,t=cx*dir.x+cy*dir.y+cz*dir.z;
+    if(t<0||t>bt)continue;
+    const dx=cx-dir.x*t,dy=cy-dir.y*t,dz=cz-dir.z*t;
+    if(dx*dx+dy*dy*.35+dz*dz<.85*.85){bt=t;best=e;}
+  }
+  return best;
+}
+function checkGolem(x,y,z){
+  const pump=b=>b===B_CPUMPKIN||b===B_PUMPKIN,snowB=b=>b===B_SNOWBLOCK,ironB=b=>b===B_IRON||b===B_METAL;
+  if(!pump(get(x,y,z)))return;
+  if(snowB(get(x,y-1,z))&&snowB(get(x,y-2,z))){
+    setRaw([[I(x,y,z),0],[I(x,y-1,z),0],[I(x,y-2,z),0]]);birth('snow',x,y-2,z);return;
+  }
+  if(ironB(get(x,y-1,z))&&ironB(get(x,y-2,z))){
+    for(const [ax,az] of [[1,0],[0,1]]){
+      if(ironB(get(x+ax,y-1,z+az))&&ironB(get(x-ax,y-1,z-az))){
+        setRaw([[I(x,y,z),0],[I(x,y-1,z),0],[I(x,y-2,z),0],[I(x+ax,y-1,z+az),0],[I(x-ax,y-1,z-az),0]]);
+        birth('iron',x,y-2,z);return;
+      }
+    }
+    toast('Almost! An iron golem needs arms: one iron block on each side of the top one.',3200);
+  }
+}
+function birth(kind,x,y,z){
+  if(pets.length>=8){const old=pets.shift();toast(`${old.name} went home to make room.`,2000);disposeEntity(old);}
+  const e=spawnPet(kind,x+.5,y,z+.5);
+  for(let k=0;k<4;k++)burst(x+.5,y+.6+k*.5,z+.5,kind==='iron'?0xcfd6dc:0xffffff,12);
+  sfx('win');toast(`${e.name} the ${kind} golem came to life!`,3000);
+  setTimeout(()=>say(e,kind==='iron'?`Hello, ${me}! I will protect you.`:`Hi ${me}! Want a snowball fight?`),700);
+  setTimeout(()=>say(buddies[0],'Whoa! You made a golem!'),2600);
+  save();
+}
+
 /* ---------- Gloomies: bouncy night creatures that hop toward you ---------- */
 const gloomies=[];let spawnT=3,poofed=0,monstersOn=true,wasNight=false,chatT=40,greeted=false;
 function nearestGloomie(pos,max){let best=null,bd=max;for(const g of gloomies){const d=g.pos.distanceTo(pos);if(d<bd){bd=d;best=g;}}return best;}
@@ -2678,6 +2789,8 @@ function overlapsPlayer(x,y,z){const p=player.pos;return x+1>p.x-PR&&x<p.x+PR&&y
 function placeBlock(force){
   const h=target(),d=aimDir();
   if(driving)return;
+  const pet=d?pickPet(h?h.t:REACH+camSmooth,camera.position,d):null;
+  if(pet&&!force){pet.follow=!pet.follow;say(pet,pet.follow?`Coming, ${me}!`:'OK, I will guard this spot.');toast(pet.follow?`${pet.name} is following you`:`${pet.name} will stay here. Click again to call them back.`,2200);save();return;}
   const car=d?pickCar(h?h.t:REACH+camSmooth,camera.position,d):null;
   if(car&&!force){enterCar(car);return;}
   if(!h)return;
@@ -2704,6 +2817,7 @@ function placeBlock(force){
     ch.set(I(cx,cy,cz),b|(rot<<8));
   }
   commitChanges(ch,it?'the '+it.name.toLowerCase():'one block');
+  if(!it&&(th===B_CPUMPKIN||th===B_PUMPKIN))checkGolem(x,y,z);
   if(tdef&&tdef.food&&!tdef.free){foods[tdef.food]--;if(!foods[tdef.food])toast(`That was your last ${tdef.name.toLowerCase()}`,1800);}
   placedCount++;sfx('place');if(meModel)meModel.swing=.35;
   if(placedCount%20===0)cheer();
@@ -3658,6 +3772,7 @@ function newWorld(s,saved){
   while(gloomies.length)removeGloomie(gloomies[0],false);
   pending=null;undoStack.length=0;
   createBuddies();createVillage();placeCrystals();mapDirty=true;
+  clearPets();if(saved&&Array.isArray(saved.gp))for(const g of saved.gp)if(g[0]==='iron'||g[0]==='snow')spawnPet(g[0],g[1],g[2],g[3],g[4],!!g[5]);
   clearCars();stopEngine();lapStart=0;bestLap=saved&&saved.bl||0;
   if(saved&&Array.isArray(saved.cars))for(const c of saved.cars)if(typeof c[4]==='object'||CAR_PRESETS[c[4]])spawnCar(c[4],c[0],c[1],c[2],c[3]);
   pantry=Object.assign({},saved&&saved.pa||{flour:2,egg:1,milk:1,cheese:1,tomato:1});foods=Object.assign({},saved&&saved.fo||{});
@@ -3694,10 +3809,12 @@ function frame(now){
     updateGloomies(dt,night);
     for(const b of buddies)updateBuddy(b,dt);
     if(village){for(const e of villagers)updateVillager(e,dt);for(const e of golems)updateGolem(e,dt);}
+    for(const e of pets)updatePet(e,dt);updateBalls(dt);
   }
   for(const b of buddies)animate(b,live?dt:0,now);
   for(const e of villagers)animate(e,live?dt:0,now);
   for(const e of golems)animate(e,live?dt:0,now);
+  for(const e of pets)animate(e,live?dt:0,now);
   if(meModel)animate(meModel,live?dt:0,now);
   for(const b of buddies){const dc=b.pos.distanceTo(camera.position);b.group.visible=dc>1.3;if(b.bubble)b.bubble.material.opacity=dc<7.5?0:1;}
   updateCrystals(dt,now,live);
