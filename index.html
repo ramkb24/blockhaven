@@ -243,7 +243,7 @@ button.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
 /* Touch controls */
 #touch{display:none}
 body.touch #touch{display:block}
-body.touch #chat{bottom:calc(240px + env(safe-area-inset-bottom,0px))}
+body.touch #chat{bottom:calc(330px + env(safe-area-inset-bottom,0px))}
 #stick{position:fixed;left:max(20px,env(safe-area-inset-left,0px));bottom:calc(120px + env(safe-area-inset-bottom,0px));width:120px;height:120px;border-radius:50%;
   background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.18);touch-action:none}
 #knob{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:rgba(236,229,211,.35)}
@@ -270,7 +270,11 @@ body.touch #knob{width:60px;height:60px;margin:-30px 0 0 -30px}
 body.touch .tbtns{bottom:calc(128px + env(safe-area-inset-bottom,0px));grid-template-columns:repeat(2,78px)}
 body.touch .tbtn{width:78px;height:64px;font-size:12px;border-radius:10px}
 body.touch #hearts{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
-@media (max-width:900px){body.touch .slot{width:40px;height:40px}body.touch .slot canvas{width:32px;height:32px}}
+@media (max-width:900px){body.touch .slot{width:40px;height:40px}body.touch .slot canvas{width:32px;height:32px}
+  body.touch #bottombar .tool{min-width:0;padding:4px 7px;font-size:10px}body.touch #bottombar .tool kbd{display:none}
+  body.touch #bottombar .tool canvas{width:24px;height:24px}body.touch .bsz{font-size:13px;height:22px;line-height:22px}
+  body.touch #stick,body.touch .tbtns{bottom:calc(150px + env(safe-area-inset-bottom,0px))}
+  body.touch #hearts{bottom:calc(84px + env(safe-area-inset-bottom,0px))}}
 
 @media (max-width:640px){
   .slot{width:34px;height:34px}.slot canvas{width:28px;height:28px}.slot span{display:none}
@@ -1909,6 +1913,7 @@ const buildPanel=document.getElementById('buildPanel');
 let buildOpen=false;
 drawBlockIcon(document.getElementById('buildIcon'),B.PLANKS);
 const blockGrid=document.getElementById('blockGrid');
+PICKABLE.splice(11,0,B_IRON,B_SNOWBLOCK,B_CPUMPKIN);
 for(const b of PICKABLE){
   const el=document.createElement('button');el.className='bitem';el.id='pick'+b;
   el.appendChild(blockIcon(b));el.append(BLOCKS[b].name);
@@ -2424,6 +2429,16 @@ function checkGolem(x,y,z){
       }
     }
     toast('Almost! An iron golem needs arms: one iron block on each side of the top one.',3200);
+    return;
+  }
+  // a golem shape made of the wrong blocks: say what to use
+  const below=get(x,y-1,z),legs=get(x,y-2,z);
+  if(below&&below===legs&&below!==8&&!BLOCKS[below].pass){
+    const nm=BLOCKS[below].name.toLowerCase();
+    const tshape=[[1,0],[0,1]].some(([ax,az])=>get(x+ax,y-1,z+az)===below&&get(x-ax,y-1,z-az)===below);
+    toast(tshape?`So close! Iron golems are made of Iron blocks (shiny grey), not ${nm}. Find Iron block in the Blocks tab.`
+      :`To make a golem, use Iron blocks in a T shape or 2 Snow blocks, not ${nm}. Then put the pumpkin on top.`,4200);
+    setTimeout(()=>say(buddies[2],'Beep! Golems need Iron blocks or Snow blocks.'),600);
   }
 }
 function birth(kind,x,y,z){
