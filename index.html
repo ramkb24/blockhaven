@@ -240,6 +240,13 @@ button.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
 .autosave{margin:0;color:var(--lichen);font-size:12px;line-height:1.5}
 #savedInfo{color:var(--moss)}
 
+.transfer{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px}
+.tcol{display:flex;flex-direction:column;gap:6px;padding:12px;border:2px solid #000;box-shadow:inset 0 0 0 2px var(--slab-edge);background:rgba(255,255,255,.04);min-width:0}
+.tcol b{font-family:var(--display);font-size:13px}.tcol small{color:var(--lichen);font-size:11px;line-height:1.45}
+.tcol textarea{width:100%;box-sizing:border-box;resize:vertical;padding:8px;border:2px solid #000;background:#0f151d;color:var(--bone);font-family:var(--mono);font-size:11px;word-break:break-all;-webkit-user-select:text;user-select:text}
+.tcol .btn{align-self:flex-start;font-size:12px;padding:8px 12px}
+body:not(.started) #sendCol{display:none}
+
 /* Touch controls */
 #touch{display:none}
 body.touch #touch{display:block}
@@ -449,6 +456,21 @@ body.touch #hearts{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
     <h3>Saved games</h3>
     <div class="slots" id="slotList"></div>
     <p class="autosave">Your game also saves itself every few seconds while you play, so you never lose your work. Saving here keeps a named copy you can go back to.</p>
+    <h3>Move a world to another device</h3>
+    <div class="transfer">
+      <div class="tcol" id="sendCol">
+        <b>Send this world</b>
+        <small>Copy the code, then send it to the other device in Messages, Notes or AirDrop.</small>
+        <textarea id="worldCodeOut" readonly rows="3" aria-label="World code for this game" placeholder="Press Copy world code"></textarea>
+        <button class="btn go" id="copyCode">Copy world code</button>
+      </div>
+      <div class="tcol">
+        <b>Get a world from another device</b>
+        <small>Paste the world code here. The world is added to your saved games and opens straight away.</small>
+        <textarea id="worldCodeIn" rows="3" aria-label="Paste a world code" placeholder="Paste a world code here (it starts with BH1:)"></textarea>
+        <button class="btn go" id="loadCode">Open this world</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2878,6 +2900,51 @@ function writeSlot(i,name){
   try{localStorage.setItem(slotKey(i),JSON.stringify(data));}catch(e){currentSlot=prevSlot;toast('Could not save: there is no room left. Delete an old save first.',3200);return false;}
   currentSlot=i;lastSaved=data.date;save();toast(`Game saved as “${data.name}”`,2200);sfx('crystal');if(saveOpen){renderSlots();renderSaveBar();}renderSavedInfo();return true;
 }
+/* world codes: a whole world as text, to move it between devices */
+const b64u={enc:u8=>{let s='';for(let i=0;i<u8.length;i+=8192)s+=String.fromCharCode.apply(null,u8.subarray(i,i+8192));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');},
+  dec:t=>{t=t.replace(/-/g,'+').replace(/_/g,'/');while(t.length%4)t+='=';const s=atob(t),u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u;}};
+async function packWorld(data){
+  const d=Object.assign({},data);delete d.thumb;
+  const raw=new TextEncoder().encode(JSON.stringify(d));
+  if(window.CompressionStream){
+    const z=new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());
+    return 'BH1:'+b64u.enc(z);
+  }
+  return 'BH0:'+b64u.enc(raw);
+}
+async function unpackWorld(code){
+  code=(code||'').replace(/\s+/g,'');
+  const m=code.match(/BH([01]):([A-Za-z0-9_-]+)/);if(!m)throw new Error('format');
+  let bytes=b64u.dec(m[2]);
+  if(m[1]==='1'){
+    if(!window.DecompressionStream)throw new Error('old');
+    bytes=new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+  }
+  const d=JSON.parse(new TextDecoder().decode(bytes));
+  if(typeof d.seed!=='number')throw new Error('format');
+  return d;
+}
+document.getElementById('copyCode').addEventListener('click',async()=>{
+  const out=document.getElementById('worldCodeOut');
+  const cur=currentSlot>=0&&readSlot(currentSlot);
+  const data=snapshot();data.name=cur?cur.name:(me+'\u2019s island');
+  const code=await packWorld(data);out.value=code;
+  try{await navigator.clipboard.writeText(code);toast('World code copied! Paste it on the other device.',2600);}
+  catch(e){out.focus();out.select();toast('Select the code and copy it, then paste it on the other device.',3000);}
+  sfx('ui');
+});
+document.getElementById('loadCode').addEventListener('click',async()=>{
+  const inp=document.getElementById('worldCodeIn');
+  let d;
+  try{d=await unpackWorld(inp.value);}
+  catch(e){toast(e.message==='old'?'This device is too old to open that code.':'That code did not work. Check you copied all of it, from BH1: to the end.',3400);return;}
+  const name=((d.name||'World')+'').slice(0,34)+' (moved)';
+  d.cs=-1;newWorld(d.seed,d);
+  const slot=firstEmptySlot();
+  if(slot>=0)writeSlot(slot,name);else{currentSlot=-1;toast('Opened the world. Your save slots are full, so delete one to keep it.',3600);}
+  inp.value='';closeSaves();playBtn.textContent='Continue';
+  if(started&&menu.hidden)toast(`Welcome to “${name}”!`,2400);
+});
 function loadSlot(i){
   const d=readSlot(i);if(!d)return;
   newWorld(d.seed,d);currentSlot=i;save();renderSavedInfo();
@@ -2971,7 +3038,7 @@ if(isTouch){document.body.classList.add('touch');document.getElementById('touch'
 let playing=false,started=false,drag=null;
 
 function play(){
-  playing=true;started=true;
+  playing=true;started=true;document.body.classList.add('started');
   menu.hidden=true;hud.hidden=false;heartsEl.hidden=false;bottombar.hidden=false;minimap.hidden=false;mapBtnsEl.hidden=false;
   showHint();audio();if(driving)startEngine();
   if(!settings.seenHelp){settings.seenHelp=true;save();openHelp();}
