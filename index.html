@@ -232,6 +232,14 @@ kbd.cap,#tip kbd,.helpcard kbd{display:inline-block;min-width:1.7em;padding:1px 
 button.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
 .bitem.special{box-shadow:inset 0 0 0 2px var(--torch);background:rgba(240,178,60,.12)}
 
+.savebar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px;border:2px solid #000;box-shadow:inset 0 0 0 2px var(--moss);background:rgba(134,184,79,.08)}
+.savebar label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--lichen)}
+#saveName{flex:1 1 200px;min-width:0;max-width:360px;padding:9px 11px;border:2px solid #000;background:#0f151d;color:var(--bone);font-family:var(--mono);font-size:15px}
+#saveName:focus-visible{outline:2px solid var(--torch)}
+#saveStatus{flex-basis:100%;margin:0;font-size:12px;color:var(--lichen)}#saveStatus b{color:var(--torch)}
+.autosave{margin:0;color:var(--lichen);font-size:12px;line-height:1.5}
+#savedInfo{color:var(--moss)}
+
 /* Touch controls */
 #touch{display:none}
 body.touch #touch{display:block}
@@ -379,7 +387,7 @@ body.touch #hearts{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
       <div class="helpcard"><div class="k"><kbd>L</kbd></div><div><b>My look</b><small>Change your hair, clothes, hats and glasses.</small></div></div>
       <div class="helpcard"><div class="k"><kbd>✦</kbd></div><div><b>Build a golem</b><small>Iron golem: 4 iron blocks in a T, then a carved pumpkin on top. Snow golem: 2 snow blocks, then a carved pumpkin. Click a golem to make it stay or follow.</small></div></div>
       <div class="helpcard"><div class="k"><kbd>G</kbd></div><div><b>Car workshop</b><small>Design your own car: type, colours, wheels, spoiler and a name.</small></div></div>
-      <div class="helpcard"><div class="k"><kbd>⌘</kbd><kbd>S</kbd></div><div><b>Save your game</b><small>Keep copies in save slots. The game also saves itself.</small></div></div>
+      <div class="helpcard"><div class="k"><kbd>⌘</kbd><kbd>S</kbd></div><div><b>Save your game</b><small>Press Save at the top right (or ⌘ S) to save. Give it a name the first time. The game also saves itself.</small></div></div>
       <div class="helpcard"><div class="k"><kbd>✦</kbd></div><div><b>Crystal hunt</b><small>12 glowing crystals are hidden on the island. Look for light beams in the sky!</small></div></div>
     </div>
   </div>
@@ -424,10 +432,19 @@ body.touch #hearts{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
 <div id="savePanel" hidden>
   <div class="slab wide" role="dialog" aria-label="Saved games">
     <div class="panel-head">
-      <div><h2>Saved games</h2><p>Your game also saves itself every few seconds. Save to a slot to keep a copy you can come back to. Press <kbd class="cap">⌘</kbd> <kbd class="cap">S</kbd> to save again quickly.</p></div>
-      <button class="btn go" id="closeSaves">Back</button>
+      <div><h2 id="saveTitle">Save your game</h2><p>Give your game a name and save it. You can load it again any time from here.</p></div>
+      <button class="btn" id="closeSaves">Back to game</button>
     </div>
+    <div class="savebar" id="saveBar">
+      <label for="saveName">Name</label>
+      <input type="text" id="saveName" maxlength="40" placeholder="Name your game">
+      <button class="btn go" id="saveNow">Save game</button>
+      <button class="btn" id="saveNew" hidden>Save as a new game</button>
+      <p id="saveStatus"></p>
+    </div>
+    <h3>Saved games</h3>
     <div class="slots" id="slotList"></div>
+    <p class="autosave">Your game also saves itself every few seconds while you play, so you never lose your work. Saving here keeps a named copy you can go back to.</p>
   </div>
 </div>
 
@@ -443,7 +460,8 @@ body.touch #hearts{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
     <p class="lede">Explore the island with <b id="otherName">Ram</b>, <b>Pip</b> the fox and <b>Bolt</b> the robot. Visit the village of <b>Maple Hollow</b>, meet the villagers and their stone golems, hunt for 12 hidden crystals, cook, design your own car and build anything you like, even skyscrapers. At night the Gloomies hop out, so build a safe place or poof them with your friends.</p>
     <div class="actions">
       <button class="btn go" id="play">Play</button>
-      <button class="btn" id="menuSaves">Saved games</button>
+      <button class="btn" id="menuSave" hidden>Save game</button>
+      <button class="btn" id="menuSaves">Load game</button>
       <button class="btn" id="menuHelp">How to play</button>
       <button class="btn" id="newWorld">New island</button>
     </div>
@@ -474,7 +492,7 @@ body.touch #hearts{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
       <div><dt>My look</dt><dd>L</dd></div>
       <div><dt>Car workshop</dt><dd>G</dd></div>
     </dl>
-    <div class="meta"><span>Seed <b id="seedLabel">–</b></span><span>Island 160 × 160 blocks</span><span id="status">Shaping the island…</span></div>
+    <div class="meta"><span>Seed <b id="seedLabel">–</b></span><span>Island 160 × 160 blocks</span><span id="status">Shaping the island…</span><span id="savedInfo"></span></div>
   </div>
 </div>
 
@@ -1342,7 +1360,7 @@ function rebuildSet(set){for(const k of set){const [a,b]=k.split(',').map(Number
 
 /* ---------- saving ---------- */
 let saveTimer=0;
-function snapshot(){return{seed,edits:encodeEdits(edits),cars:cars.map(c=>[+c.pos.x.toFixed(2),+c.pos.y.toFixed(2),+c.pos.z.toFixed(2),+c.yaw.toFixed(2),c.spec]),pa:pantry,fo:foods,gp:pets.map(e=>[e.pet,+e.pos.x.toFixed(2),+e.pos.y.toFixed(2),+e.pos.z.toFixed(2),e.name,e.follow?1:0]),bl:bestLap,p:[player.pos.x,player.pos.y,player.pos.z,player.yaw,player.pitch],t:worldTime,m:monstersOn,me,hb:HOTBAR,st:settings,cr:[...collected]};}
+function snapshot(){return{seed,edits:encodeEdits(edits),cars:cars.map(c=>[+c.pos.x.toFixed(2),+c.pos.y.toFixed(2),+c.pos.z.toFixed(2),+c.yaw.toFixed(2),c.spec]),pa:pantry,fo:foods,gp:pets.map(e=>[e.pet,+e.pos.x.toFixed(2),+e.pos.y.toFixed(2),+e.pos.z.toFixed(2),e.name,e.follow?1:0]),bl:bestLap,p:[player.pos.x,player.pos.y,player.pos.z,player.yaw,player.pitch],t:worldTime,m:monstersOn,me,hb:HOTBAR,st:settings,cr:[...collected],cs:currentSlot};}
 function save(){
   clearTimeout(saveTimer);
   saveTimer=setTimeout(()=>{try{localStorage.setItem(SAVE_KEY,JSON.stringify(snapshot()));}catch(e){}},500);
@@ -2840,17 +2858,45 @@ function thumbData(){
   try{return c.toDataURL('image/png');}catch(e){return '';}
 }
 function writeSlot(i,name){
+  const prevSlot=currentSlot;currentSlot=i;
   const data=snapshot();data.name=(name||'').trim().slice(0,40)||('Game '+(i+1));data.date=Date.now();data.thumb=thumbData();
-  try{localStorage.setItem(slotKey(i),JSON.stringify(data));}catch(e){toast('Could not save: there is no room left. Delete an old save first.',3200);return false;}
-  currentSlot=i;toast(`Saved “${data.name}”`,1800);sfx('crystal');if(saveOpen)renderSlots();return true;
+  try{localStorage.setItem(slotKey(i),JSON.stringify(data));}catch(e){currentSlot=prevSlot;toast('Could not save: there is no room left. Delete an old save first.',3200);return false;}
+  currentSlot=i;lastSaved=data.date;save();toast(`Game saved as “${data.name}”`,2200);sfx('crystal');if(saveOpen){renderSlots();renderSaveBar();}renderSavedInfo();return true;
 }
 function loadSlot(i){
   const d=readSlot(i);if(!d)return;
-  newWorld(d.seed,d);currentSlot=i;
+  newWorld(d.seed,d);currentSlot=i;save();renderSavedInfo();
   closeSaves();toast(`Loaded “${d.name}”`,2000);playBtn.textContent='Continue';
 }
 function deleteSlot(i){try{localStorage.removeItem(slotKey(i));}catch(e){}if(currentSlot===i)currentSlot=-1;renderSlots();}
-function quickSave(){if(currentSlot>=0){const d=readSlot(currentSlot);writeSlot(currentSlot,d&&d.name);}else openSaves();}
+let lastSaved=null;
+function firstEmptySlot(){for(let i=0;i<SLOTS;i++)if(!readSlot(i))return i;return -1;}
+function ago(t){const m=Math.round((Date.now()-t)/60000);return m<1?'just now':m===1?'1 minute ago':m<60?m+' minutes ago':new Date(t).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});}
+function saveAsNew(name){
+  const i=firstEmptySlot();
+  if(i<0){toast('All 6 save slots are full. Pick a game below to save over, or delete one.',3400);if(!saveOpen)openSaves();return false;}
+  return writeSlot(i,name);
+}
+function quickSave(){
+  if(currentSlot>=0&&readSlot(currentSlot)){const d=readSlot(currentSlot);writeSlot(currentSlot,d.name);}
+  else openSaves(true);
+}
+function renderSaveBar(){
+  const cur=currentSlot>=0?readSlot(currentSlot):null,inp=document.getElementById('saveName');
+  if(document.activeElement!==inp)inp.value=cur?cur.name:(me+'\u2019s island');
+  document.getElementById('saveNew').hidden=!cur;
+  document.getElementById('saveNow').textContent=cur?'Save':'Save game';
+  document.getElementById('saveBar').hidden=!started;
+  document.getElementById('saveTitle').textContent=started?'Save your game':'Load a game';
+  const st=document.getElementById('saveStatus');
+  st.innerHTML=cur?`You are playing <b></b>. Last saved ${ago(cur.date)}.`:'This game has not been saved with a name yet.';
+  if(cur)st.querySelector('b').textContent=cur.name;
+}
+function renderSavedInfo(){
+  const cur=currentSlot>=0?readSlot(currentSlot):null,el=document.getElementById('savedInfo');
+  el.textContent=cur?`Saved as “${cur.name}” ${ago(cur.date)}`:(started?'Saves itself automatically':'');
+  document.getElementById('menuSave').hidden=!started;
+}
 function armButton(btn,label,fn){
   btn.addEventListener('click',()=>{
     if(btn.dataset.armed){fn();return;}
@@ -2887,11 +2933,19 @@ function renderSlots(){
     info.appendChild(act);card.appendChild(info);slotList.appendChild(card);
   }
 }
-function openSaves(){saveOpen=true;playing=false;savePanel.hidden=false;for(const k in keys)keys[k]=false;renderSlots();}
-function closeSaves(){saveOpen=false;savePanel.hidden=true;if(started&&menu.hidden)playing=true;}
+function openSaves(focusName){saveOpen=true;playing=false;savePanel.hidden=false;for(const k in keys)keys[k]=false;renderSlots();renderSaveBar();
+  if(focusName===true&&started){const inp=document.getElementById('saveName');setTimeout(()=>{try{inp.focus();inp.select();}catch(e){}},50);}}
+function closeSaves(){saveOpen=false;savePanel.hidden=true;if(started&&menu.hidden)playing=true;renderSavedInfo();}
 document.getElementById('closeSaves').addEventListener('click',closeSaves);
-document.getElementById('saveBtn').addEventListener('click',openSaves);
-document.getElementById('menuSaves').addEventListener('click',openSaves);
+document.getElementById('saveBtn').addEventListener('click',quickSave);
+document.getElementById('menuSaves').addEventListener('click',()=>openSaves(false));
+document.getElementById('menuSave').addEventListener('click',()=>{const cur=currentSlot>=0&&readSlot(currentSlot);if(cur)writeSlot(currentSlot,cur.name);else openSaves(true);});
+document.getElementById('saveNow').addEventListener('click',()=>{
+  const name=document.getElementById('saveName').value,cur=currentSlot>=0&&readSlot(currentSlot);
+  if(cur)writeSlot(currentSlot,name);else saveAsNew(name);
+});
+document.getElementById('saveNew').addEventListener('click',()=>saveAsNew(document.getElementById('saveName').value));
+document.getElementById('saveName').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();document.getElementById('saveNow').click();}});
 
 /* ---------- input ---------- */
 const keys={};
@@ -2918,7 +2972,7 @@ function pause(){
   for(const k in keys)keys[k]=false;
   stopEngine();
   playBtn.textContent='Resume';
-  save();
+  save();renderSavedInfo();
 }
 playBtn.addEventListener('click',play);
 
@@ -3772,6 +3826,7 @@ function newWorld(s,saved){
   while(gloomies.length)removeGloomie(gloomies[0],false);
   pending=null;undoStack.length=0;
   createBuddies();createVillage();placeCrystals();mapDirty=true;
+  currentSlot=saved&&typeof saved.cs==='number'?saved.cs:-1;
   clearPets();if(saved&&Array.isArray(saved.gp))for(const g of saved.gp)if(g[0]==='iron'||g[0]==='snow')spawnPet(g[0],g[1],g[2],g[3],g[4],!!g[5]);
   clearCars();stopEngine();lapStart=0;bestLap=saved&&saved.bl||0;
   if(saved&&Array.isArray(saved.cars))for(const c of saved.cars)if(typeof c[4]==='object'||CAR_PRESETS[c[4]])spawnCar(c[4],c[0],c[1],c[2],c[3]);
@@ -3781,7 +3836,7 @@ function newWorld(s,saved){
   for(let i=0;i<chunkMeshes.length;i++){const old=chunkMeshes[i];if(old)for(const m of old){scene.remove(m);m.geometry.dispose();}chunkMeshes[i]=null;}
   queueAllChunks();
   statusEl.textContent='Shaping the island…';
-  save();
+  save();renderSavedInfo();
 }
 function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
 addEventListener('resize',resize);
